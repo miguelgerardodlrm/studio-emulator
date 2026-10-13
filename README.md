@@ -4,27 +4,27 @@ Ejecutar **Roblox Studio (x86_64)** en una **Raspberry Pi 5 (ARM64)** usando
 **emulación Wine + Box64**, con la **GPU VideoCore VII renderizando de verdad**
 (vía el driver Vulkan `v3dv` de Mesa).
 
-> **Estado: FUNCIONA, pero VA LENTO. Léelo antes de invertir tiempo.**
+> **Estado: FUNCIONA, pero NO ES USABLE para desarrollar. Léelo antes.**
 >
 > Studio arranca, renderiza con la **GPU real (`V3D 7.1.10.2`)**, llega
 > **logueado** y **abre places en el editor 3D** con viewport interactivo
 > (verificado: 369.937 píxeles cambiaron al hacer zoom). Sin congelarse.
-> Corre **directo en la sesión XFCE** si esta expone DRI3.
 >
-> ⚠️ **PERO ES USABLE, NO CÓMODO.** Es emulación x86_64→ARM64 de una app
-> pesada: **la interactividad es la de un PC de hace ~15 años**, no la de un
-> escritorio moderno. Si buscas rendimiento, **esto no es para ti**; si buscas
-> que *funcione* en una Pi, sigue leyendo. Métricas reales y qué puedes hacer
-> en **§14**.
+> ⚠️ **PERO LA CPU ESTÁ AL 100 %.** Medido con el editor abierto:
+> **quedaba un 1,2 % de CPU libre**. El hilo principal de Studio va clavado
+> al 100 % (emulación de una sola cadena), la UI web se come ~150 % y el VNC
+> ~75 %. **No es un problema de configuración: es el techo del hardware.**
+> Si buscas rendimiento, **esto no es para ti**. Métricas y alternativas en
+> **§14**, y el techo en **§14.7**.
 >
-> ✅ **Atajo que sí ayuda**: abre el place **directamente** y te saltas la
-> pantalla de inicio, que es un **Chromium emulado** costeando un núcleo entero
-> y 2,3 GB. Ver **§14.1**.
+> ✅ **Lo que sí se puede recortar**: abre el place **directamente**
+> (`studio.sh /ruta/al/place.rbxl`) y te saltas la pantalla de inicio, que es
+> un **Chromium emulado** costeando un núcleo entero y 2,3 GB (**§14.1**).
 >
 > ⚠️ **La Pi se congelaba al abrir un place** — era un **OOM con cero swap**
 > que, con `OOMPolicy=stop`, mataba también el servidor X. **Arreglado y
 > verificado**: swap de 16 GB + `OOMPolicy=continue` + Studio como víctima del
-> OOM (ver **§11**).
+> OOM (ver **§11**). El arreglo funciona, pero **no acelera**: ver §14.2.
 
 ---
 
@@ -910,9 +910,20 @@ Medido antes/después con el mismo escenario: CPU de Studio pasó de **50 % a
 120 %** (estaba tirando de disco, no de CPU) y el swap de 5,8 GB a ~0,6 GB.
 **No acelera la emulación — le quitaste el freno de disco que la tapaba.**
 
-> ⚠️ **`swapoff` con el swap lleno y poca RAM libre puede tardar o no caber.**
-> Asegúrate de tener RAM libre antes (aquí había 11 GB). Si no la tienes,
-> cierra Studio primero.
+> **⚠️ Corrección honesta (oct 2026).** Este apartado se escribió afirmando que
+> este arreglo "aceleraba" Studio, porque la CPU de Studio subió de 50 % a
+> 120 % tras aplicarlo. **Eso era un error de lectura mía**: más CPU no es más
+> rápido, significaba que Studio dejaba de esperar disco y pasaba a *trabajar*
+> — al mismo ritmo de siempre. Quien lo aplicó **no notó diferencia**.
+>
+> El arreglo **es correcto y sí se aplica** (el swap de Studio pasó de 2.298 MB
+> a 0 MB), pero **no mejora la fluidez**, porque el cuello de botella real es
+> otro: **la CPU está al 100 % saturada**. Ver **§14.7**, que es donde está la
+> verdad de todo esto.
+>
+> Se deja documentado igualmente porque **sí es una optimización real**: quita
+> I/O de disco del camino y deja el sistema en un estado más limpio. Simplemente
+> **no es lo que frena**.
 
 ### 14.3 Qué NO va a ayudar (y por qué)
 
@@ -970,6 +981,61 @@ Lo que separa (porque se confunden entre sí):
 > **Uso pensado para issues**: la plantilla de este repo pide estas cifras.
 > Si reportas un problema, pega la salida de `perf-report.sh` — ahorra tres
 > idas y venidas de preguntas y respuestas.
+
+### 14.7 El techo real: la CPU está al 100 %
+
+Esto es lo que hay que saber **antes** de invertir tiempo en esta receta, y lo
+que este documento tardó demasiado en decir claro.
+
+Medido con **el editor abierto y un place cargado**, en una Pi 5 de 16 GB:
+
+```
+usr 95,39 %   sys 3,29 %   IDLE 1,23 %
+```
+
+**Queda un 1,2 % de CPU libre.** Ni un núcleo. Y el reparto:
+
+| Consumidor | CPU | ¿Evitable? |
+|---|---|---|
+| Studio (hilo principal, emulado) | **100 %** — clavado | No |
+| WebView2 ×2 (UI de Studio) | ~150 % | **No del todo** |
+| Xtigervnc (recodifica la pantalla) | ~75 % | Sí, pero necesita `sudo` |
+| Sistema | ~30 % | No |
+
+Tres conclusiones, y son definitivas:
+
+1. **El hilo principal de Studio está al 100 %.** Es emulación de una sola
+   cadena de ejecución: aunque le des más núcleos, esa cadena no va más rápido
+   porque **no hay núcleos más rápidos**. Los Cortex-A76 van ya a 2,4 GHz.
+
+2. **WebView2 vuelve.** Abrir el place directamente evita la *home*, pero la
+   **propia interfaz de Studio es web** (Toolbox, Properties, ayudas). Dos
+   instancias se comen ~150 %. Se puede recortar con `webview-env.sh`, pero no
+   eliminarse sin romper la UI.
+
+3. **El único desperdicio real es el VNC (~75 %)**, y lo arregla `sudo`. Pero
+   incluso quitándolo entero, seguirías con el hilo principal de Studio al
+   100 %.
+
+#### ¿Y entonces?
+
+**Con esta receta, Studio en una Pi 5 funciona pero no es usable para
+desarrollar con soltura.** Es el resultado correcto del experimento — probar
+que se puede — pero no una herramienta de producción.
+
+Las opciones que quedan, siendo honestos sobre cada una:
+
+| Opción | Coste | Veredicto |
+|---|---|---|
+| **Recortar el VNC** (color, codificación) | `sudo`, 30 min | Recupera ~0,7 de un núcleo. **Ayuda, no basta.** |
+| **Recortar la UI web de Studio** (`webview-env.sh`) | bajo | Quita algo de los 150 %. **Ayuda, no basta.** |
+| **Probar FEX-Emu en vez de Box64** | alto, ~2 h | Diferente JIT; a veces más rápido, a veces menos. **Sin garantías** — hay que medir. |
+| **Aceptar el techo** | 0 | Es lo que recomiendo si buscabas rendimiento. |
+
+> **Consejo de quien ya lo midió**: si lo que quieres es *usar* Studio, usa un
+> ordenador con GPU. Si lo que quieres *aprender* — emulación, Box64, Wine,
+> Vulkan en ARM — esto es fascinante y funciona. Son objetivos distintos, y
+> confundirlos cuesta muchas horas.
 
 ---
 
