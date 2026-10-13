@@ -373,6 +373,13 @@ cat <<RESUMEN
     2. Lanza Studio (descarga los paquetes la primera vez):
          DISPLAY=\$DISPLAY ./studio.sh
 
+       Si vas a trabajar en un place concreto, ábrelo DIRECTO — te saltas la
+       home web, que es un Chromium emulado que cuesta 1 núcleo y 2,3 GB (§14.1):
+         DISPLAY=\$DISPLAY ./studio.sh /ruta/al/tu-place.rbxl
+
+       ⚠️ Rendimiento honesto: funciona, pero VA LENTO (es emulación x86_64).
+          Métricas reales y qué NO va a ayudar: README §14.
+
     3. Comprueba que usas la GPU y no software:
          ./studio.sh status
          glxinfo -B | grep renderer      # → V3D 7.1.10.2

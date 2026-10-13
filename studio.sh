@@ -125,9 +125,39 @@ cmd_stop() {
   log "Studio, x11vnc y visor detenidos."
 }
 
+usage() {
+  cat <<EOF
+Uso: studio.sh [OPCIÓN | /ruta/al/place.rbxl]
+
+  studio.sh                     arranca Studio (pantalla de inicio)
+  studio.sh /ruta/al/place.rbxl ARRANCA DIRECTO AL EDITOR — recomendado (§14.1)
+                                Se salta la home web, que es un Chromium emulado
+                                que cuesta un núcleo entero y ~2,3 GB de RAM.
+  studio.sh status              qué está corriendo, en qué modo, qué falta
+  studio.sh stop                cierra todo
+  studio.sh -h | --help         esta ayuda
+EOF
+}
+
+PLACE=""
 case "${1:-}" in
-  stop)   cmd_stop; exit 0 ;;
-  status) cmd_status; exit 0 ;;
+  stop)          cmd_stop; exit 0 ;;
+  status)        cmd_status; exit 0 ;;
+  -h|--help|help) usage; exit 0 ;;
+  "")            ;;
+  *)
+    if [ -f "$1" ]; then
+      case "$1" in
+        *.rbxl|*.rbxlx|*.rbxlx?|*.rbxl?) ;;
+        *) warn "el archivo no parece un place de Studio (.rbxl/.rbxlx): $1"; exit 2 ;;
+      esac
+      PLACE="$1"
+      shift
+    else
+      warn "comando o fichero desconocido: $1"
+      usage
+      exit 2
+    fi ;;
 esac
 
 choose_mode
@@ -240,9 +270,17 @@ ensure_studio_running() {
 
   if ! have vinegar; then warn "vinegar no está en PATH."; return 1; fi
 
-  log "Lanzando Vinegar → Roblox Studio (x86_64 vía box64 + Wine 10.0) en $TARGET_DISPLAY..."
-  ( cd "$HOME/Downloads/StudioEmulator" && DISPLAY="$TARGET_DISPLAY" nohup vinegar \
-      > "$HOME/Downloads/StudioEmulator/vinegar-auto.log" 2>&1 & )
+  if [ -n "$PLACE" ]; then
+    log "Lanzando DIRECTO AL EDITOR con: $PLACE"
+    log "  (se salta la pantalla de inicio = ahorras el Chromium emulado: ~1 núcleo + 2,3 GB — §14.1)"
+    ( cd "$HOME/Downloads/StudioEmulator" && DISPLAY="$TARGET_DISPLAY" nohup vinegar run "$PLACE" \
+        > "$HOME/Downloads/StudioEmulator/vinegar-auto.log" 2>&1 & )
+  else
+    log "Lanzando Vinegar → Roblox Studio (x86_64 vía box64 + Wine 10.0) en $TARGET_DISPLAY..."
+    log "  tip: si vas a trabajar en un sitio concreto, pásale su .rbxl — la home web cuesta 1 núcleo (§14.1)"
+    ( cd "$HOME/Downloads/StudioEmulator" && DISPLAY="$TARGET_DISPLAY" nohup vinegar \
+        > "$HOME/Downloads/StudioEmulator/vinegar-auto.log" 2>&1 & )
+  fi
 
   log "Esperando la ventana de Studio (login ~30-40s)..."
   local i

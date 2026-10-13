@@ -4,16 +4,27 @@ Ejecutar **Roblox Studio (x86_64)** en una **Raspberry Pi 5 (ARM64)** usando
 **emulación Wine + Box64**, con la **GPU VideoCore VII renderizando de verdad**
 (vía el driver Vulkan `v3dv` de Mesa).
 
-> **Estado actual: FUNCIONANDO (validado hasta el editor, y sin congelarse).**
+> **Estado: FUNCIONA, pero VA LENTO. Léelo antes de invertir tiempo.**
+>
 > Studio arranca, renderiza con la **GPU real (`V3D 7.1.10.2`)**, llega
-> **logueado a la pantalla de inicio** y **abre places en el editor 3D** con el
-> viewport interactivo (verificado: 369.937 píxeles cambiaron al hacer zoom).
+> **logueado** y **abre places en el editor 3D** con viewport interactivo
+> (verificado: 369.937 píxeles cambiaron al hacer zoom). Sin congelarse.
 > Corre **directo en la sesión XFCE** si esta expone DRI3.
+>
+> ⚠️ **PERO ES USABLE, NO CÓMODO.** Es emulación x86_64→ARM64 de una app
+> pesada: **la interactividad es la de un PC de hace ~15 años**, no la de un
+> escritorio moderno. Si buscas rendimiento, **esto no es para ti**; si buscas
+> que *funcione* en una Pi, sigue leyendo. Métricas reales y qué puedes hacer
+> en **§14**.
+>
+> ✅ **Atajo que sí ayuda**: abre el place **directamente** y te saltas la
+> pantalla de inicio, que es un **Chromium emulado** costeando un núcleo entero
+> y 2,3 GB. Ver **§14.1**.
 >
 > ⚠️ **La Pi se congelaba al abrir un place** — era un **OOM con cero swap**
 > que, con `OOMPolicy=stop`, mataba también el servidor X. **Arreglado y
 > verificado**: swap de 16 GB + `OOMPolicy=continue` + Studio como víctima del
-> OOM. Repite el caso de antes y ahora **sobrevive** (ver **§11**).
+> OOM (ver **§11**).
 
 ---
 
@@ -65,10 +76,16 @@ explicado. Las configs finales están en **[`examples/`](examples/)**.
 ## Inicio rápido (una vez instalado todo)
 
 ```bash
-~/Downloads/StudioEmulator/studio.sh          # → arranca Studio en tu escritorio
-~/Downloads/StudioEmulator/studio.sh status   # → qué está corriendo, en qué modo, qué falta
-~/Downloads/StudioEmulator/studio.sh stop     # → cierra todo
+~/Downloads/StudioEmulator/studio.sh                       # → arranca Studio (pantalla de inicio)
+~/Downloads/StudioEmulator/studio.sh /ruta/al/tu.rbxl      # → ARRANCA DIRECTO AL EDITOR ★
+~/Downloads/StudioEmulator/studio.sh status                # → qué está corriendo, en qué modo, qué falta
+~/Downloads/StudioEmulator/studio.sh stop                  # → cierra todo
 ```
+
+> ★ **Conviene casi siempre.** La pantalla de inicio es un **Chromium emulado**:
+> se come **un núcleo entero y ~2,3 GB** solo para mostrar un menú. Abrir el
+> place directamente lo elimina por completo y llega al editor en ~12 s en vez
+> de ~50 s. Detalle en **§14.1**.
 
 Studio aparece como **ventana normal en tu propio escritorio XFCE**
 (interactiva: clic + teclado). Si estás logueado en Roblox, arranca directamente
@@ -787,6 +804,102 @@ Resultado:
 
 ---
 
+## 14. Rendimiento real (lo que nadie te cuenta)
+
+Esta sección existe porque **"funciona" no significa "es usable"**, y un README
+que solo diga "FUNCIONANDO" miente por omisión. Todas las cifras de abajo están
+**medidas en una Pi 5 de 16 GB**, no estimadas.
+
+### La verdad de fondo
+
+Box64 traduce cada instrucción x86_64 a ARM64 en tiempo de ejecución. Ese
+traductor es **bueno** (ya va casi al máximo: `BIGBLOCK=2`, `CALLRET=2`,
+`NATIVEFLAGS=1`, `BLEEDING_EDGE=1`), pero **no puede borrar la diferencia de
+IPC** entre un Cortex-A76 ejecutando código nativo y uno ejecutando x86_64
+traducido. Números redondos: **un emulador de CPU de este tipo cuesta entre
+5× y 15× respecto a ejecutar lo mismo en hardware x86 nativo**.
+
+Roblox Studio no es un programa ligero: es Qt + un motor 3D + (en la pantalla
+de inicio) una página web completa. Traducir eso a ARM64 con unos núcleos de
+2,4 GHz da como resultado **la fluidez de un portátil de hace ~15 años**.
+**Esto no se arregla con flags**: es el coste del problema que se está
+resolviendo.
+
+### Métricas medidas (Pi 5 16 GB, sesión VNC, place abierto en el editor)
+
+| Componente | CPU | RAM (PSS) | Notas |
+|---|---|---|---|
+| `RobloxStudioBet` (editor) | **~120 %** | **~2,6 GB** | Emulado por box64 |
+| `msedgewebview2` (solo la **home**) | **~97 %** | **~2,3 GB** | Chromium **emulado** |
+| `Xtigervnc` (recodifica la pantalla) | **30–90 %** | — | Cada frame que se dibuja se captura y recodifica |
+
+Dos lecturas importantes de esa tabla:
+
+1. **La pantalla de inicio cuesta casi tanto como todo el editor.** Es una
+   página web corriendo dentro de Chromium, y ese Chromium **también va
+   emulado**. 1 núcleo entero + 2,3 GB de RAM para mostrar un menú.
+2. **El servidor VNC consume entre un tercio y un núcleo completo** solo
+   recodificando la pantalla. Si ves Studio a través de VNC, esa CPU no llega
+   a Studio.
+
+### 14.1 Atajo que sí compensa: abre el place directamente
+
+En lugar de arrancar Studio en su pantalla de inicio, abre el archivo del
+place. Te saltas la home y con ella **todo el Chromium emulado**:
+
+```bash
+DISPLAY=:1 vinegar run /ruta/al/tu-place.rbxl
+```
+
+Medido con `AvatarCyclorama.rbxl`:
+
+| | Arranque normal (home) | Arranque directo (place) |
+|---|---|---|
+| Instancias WebView2 | 5 | **0** |
+| RAM de WebView2 | ~2,3 GB | **0** |
+| CPU de WebView2 | ~97 % (1 núcleo) | **0 %** |
+| RAM de Studio | ~1,7 GB | ~2,6 GB (absorbe la UI) |
+| Hasta el editor usable | ~40–60 s | **~12 s** |
+
+> **Regla práctica**: si trabajas en un sitio concreto, tenlo en un `.rbxl` y
+> ábrelo directamente. Reserva la pantalla de inicio solo para cuando de verdad
+> necesites el launcher.
+
+### 14.2 Qué NO va a ayudar (y por qué)
+
+Para que no pierdas el tiempo probando cosas que suenan bien y no sirven:
+
+| Idea | ¿Por qué no sirve? |
+|---|---|
+| Subir los flags de dynarec | `BIGBLOCK`, `CALLRET`, `NATIVEFLAGS` y `BLEEDING_EDGE` **ya están al máximo por defecto** en el build `RPI5ARM64`. |
+| Forzar el gobernador a `performance` | Medido: los 4 núcleos ya van a **2,4 GHz** (máximo) y la CPU está a 58 °C sin throttling. |
+| Añadir más RAM / más swap | **No es un problema de memoria**. Con el editor abierto quedaban 9 GB libres y el swap al 4 %. |
+| Compilar box64 con otras optimizaciones | El cuello de botella es la traducción de instrucciones, no la compilación. |
+| Usar DXVK para ir más rápido | Ya está descartado de raíz: exige `multiDrawIndirect`, que el VideoCore VII no soporta (**§8**). |
+
+### 14.3 Qué sí puede mejorar algo (margen real, no milagros)
+
+- **Abre places directamente** (§14.1) — la única mejora grande y gratis.
+- **Reduce lo que Studio dibuja**: viewport pequeño, calidad de sombras al
+  mínimo, sin *shadows* / *lighting* en el editor. Aliviar el 3D libera CPU
+  que va emulada.
+- **Cierra la home web si ya la usaste**: los `msedgewebview2` **se quedan
+  huérfanos** reteniendo ~2 GB. `studio.sh status` te avisa (`stale`), y
+  `pkill -x RobloxStudioBet` los limpia.
+- **Baja la profundidad de color del VNC** si controlas su arranque: sobre
+  `localhost` la compresión es CPU gastada en balde.
+- **No uses Xephyr**: hereda las limitaciones del X anfitrión y acaba en
+  llvmpipe (**§10**).
+
+### 14.4 Entonces, ¿para qué sirve?
+
+Si tu idea es **aprender, experimentar, tocar places pequeños o simplemente
+comprobar que se puede**, funciona y es fascinante. Si tu idea es **desarrollar
+un juego con soltura en una Pi**, no: para eso necesitas hardware x86 o un
+ordenador con GPU decente. Decirlo claro ahorra horas a todo el mundo.
+
+---
+
 ## Estructura de archivos usada
 
 **Lo que hay en este repositorio** (lo puedes clonar tal cual):
@@ -796,6 +909,7 @@ studio-emulator/
 ├── README.md                # este archivo
 ├── install.sh               # INSTALADOR — instala todo el stack (idempotente)
 ├── studio.sh                # LANZADOR AUTO (detecta modo directo/puente, §10)
+│                            #   acepta un .rbxl → va directo al editor (§14.1)
 ├── webview-env.sh           # límite de RAM de WebView2, vía [studio] launcher (§11.4)
 ├── xinput.py                # simula clics/zoom vía libXtst (§9a, sin xdotool)
 ├── examples/                # configs descargables, cada una con su "dónde va"
