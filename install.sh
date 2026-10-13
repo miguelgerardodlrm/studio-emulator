@@ -283,7 +283,7 @@ fi
 
 # ----------------------------------------------------------------- 8. config
 step "8. Config de Vinegar + webview-env.sh"
-run chmod +x "$REPO_DIR/webview-env.sh" "$REPO_DIR/studio.sh" "$REPO_DIR/xinput.py"
+run chmod +x "$REPO_DIR/webview-env.sh" "$REPO_DIR/studio.sh" "$REPO_DIR/xinput.py" "$REPO_DIR/perf-report.sh"
 CFG="$HOME/.config/vinegar/config.toml"
 if [ -f "$CFG" ]; then
   ok "config.toml ya existe — NO lo sobrescribo"

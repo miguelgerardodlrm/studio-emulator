@@ -865,7 +865,56 @@ Medido con `AvatarCyclorama.rbxl`:
 > ábrelo directamente. Reserva la pantalla de inicio solo para cuando de verdad
 > necesites el launcher.
 
-### 14.2 Qué NO va a ayudar (y por qué)
+### 14.2 El hallazgo más rentable: Studio estaba metido en swap
+
+De todas las cosas medidas, **esta es la que más diferencia hace y la que
+menos gente mira**. Con `perf-report.sh` (ver §14.6) salió esto, con Studio
+abierto y **11 GB de RAM libres**:
+
+```
+Studio (PID 8468):  RAM 1.153 MB  ·  SWAP 2.298 MB
+```
+
+**Studio tenía más memoria en disco que en RAM.** Y no por falta de recursos:
+había 11 GB libres. Lo que pasa es que el kernel, con `vm.swappiness=60` por
+defecto, manda a swap las páginas "frías" de un proceso con un espacio de
+direcciones enorme — y Studio, al ser una app de Windows emulada, tiene un
+espacio virtual de decenas de GB.
+
+El efecto es brutal y **se confunde fácilmente con "es que la emulación es
+lenta"**: cada vez que Studio toca una página que está en disco, paga I/O.
+Y eso que a 58 °C y con un SSD no es lentísimo… pero multiplicado por miles
+de accesos convierte cualquier acción en un tirón.
+
+**Comprueba si te pasa a ti:**
+
+```bash
+p=$(pgrep -x RobloxStudioBet)
+awk '/^Pss:|^Swap:/{printf "  %s %d MB\n", $1, $2/1024}' /proc/$p/smaps_rollup
+```
+
+**Arreglo** (necesita `sudo`):
+
+```bash
+# 1. Trae todo de vuelta a la RAM (si hay RAM libre, es instantáneo)
+sudo swapoff -a && sudo swapon -a
+
+# 2. Que no vuelva a empujar páginas de Studio a disco
+echo 10 | sudo tee /proc/sys/vm/swappiness
+
+# 3. Persistente entre reinicios
+echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.d/99-studio.conf
+```
+
+Medido antes/después con el mismo escenario: CPU de Studio pasó de **50 % a
+120 %** (estaba tirando de disco, no de CPU) y el swap de 5,8 GB a ~0,6 GB.
+**No acelera la emulación — le quitaste el freno de disco que la tapaba.**
+
+> ⚠️ **`swapoff` con el swap lleno y poca RAM libre puede tardar o no caber.**
+> Asegúrate de tener RAM libre antes (aquí había 11 GB). Si no la tienes,
+> cierra Studio primero.
+
+### 14.3 Qué NO va a ayudar (y por qué)
 
 Para que no pierdas el tiempo probando cosas que suenan bien y no sirven:
 
@@ -877,7 +926,7 @@ Para que no pierdas el tiempo probando cosas que suenan bien y no sirven:
 | Compilar box64 con otras optimizaciones | El cuello de botella es la traducción de instrucciones, no la compilación. |
 | Usar DXVK para ir más rápido | Ya está descartado de raíz: exige `multiDrawIndirect`, que el VideoCore VII no soporta (**§8**). |
 
-### 14.3 Qué sí puede mejorar algo (margen real, no milagros)
+### 14.4 Qué sí puede mejorar algo (margen real, no milagros)
 
 - **Abre places directamente** (§14.1) — la única mejora grande y gratis.
 - **Reduce lo que Studio dibuja**: viewport pequeño, calidad de sombras al
@@ -891,12 +940,36 @@ Para que no pierdas el tiempo probando cosas que suenan bien y no sirven:
 - **No uses Xephyr**: hereda las limitaciones del X anfitrión y acaba en
   llvmpipe (**§10**).
 
-### 14.4 Entonces, ¿para qué sirve?
+### 14.5 Entonces, ¿para qué sirve?
 
 Si tu idea es **aprender, experimentar, tocar places pequeños o simplemente
 comprobar que se puede**, funciona y es fascinante. Si tu idea es **desarrollar
 un juego con soltura en una Pi**, no: para eso necesitas hardware x86 o un
 ordenador con GPU decente. Decirlo claro ahorra horas a todo el mundo.
+
+### 14.6 Mídelo tú: `perf-report.sh`
+
+Nada de lo anterior sirve si no sabes **qué es lo que frena en tu equipo**.
+Este script lo mide y te da un veredicto:
+
+```bash
+DISPLAY=:1 ./perf-report.sh            # diagnóstico completo
+DISPLAY=:1 ./perf-report.sh --idle 30  # mide el redibujado en reposo 30 s
+```
+
+Lo que separa (porque se confunden entre sí):
+
+| Mide | Por qué importa |
+|---|---|
+| **CPU de Studio y de WebView2** | La home web es Chromium **emulado**: suele costar tanto como el editor entero (§14.1) |
+| **CPU de Xtigervnc** | Cada frame que Studio dibuja se captura y recodifica: suele comerse 0,6–0,9 de un núcleo |
+| **¿Studio está en swap?** | El caso más rentable de arreglar: si tiene más memoria en disco que en RAM, paga I/O por todo (§14.2) |
+| **¿Se redibuja en reposo?** | Compara dos capturas sin tocar nada: si cambian píxeles, hay render continuo que el VNC re-codifica |
+| **Gobernador, temperatura, RAM** | Descarta de un vazo las causas tontas (throttling, falta de RAM) |
+
+> **Uso pensado para issues**: la plantilla de este repo pide estas cifras.
+> Si reportas un problema, pega la salida de `perf-report.sh` — ahorra tres
+> idas y venidas de preguntas y respuestas.
 
 ---
 
@@ -912,6 +985,7 @@ studio-emulator/
 │                            #   acepta un .rbxl → va directo al editor (§14.1)
 ├── webview-env.sh           # límite de RAM de WebView2, vía [studio] launcher (§11.4)
 ├── xinput.py                # simula clics/zoom vía libXtst (§9a, sin xdotool)
+├── perf-report.sh           # MIDE a dónde se va la CPU — diagnostica tu equipo (§14.6)
 ├── examples/                # configs descargables, cada una con su "dónde va"
 │   ├── README.md            #   qué es cada fichero (+ por qué NO hay FFlags)
 │   ├── vinegar-config.toml  #   ~/.config/vinegar/config.toml   (§6)
