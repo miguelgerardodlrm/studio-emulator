@@ -1,0 +1,33 @@
+# ============================================================
+# ~/.config/vinegar/config.toml  —  CONFIGURACIÓN DE VINEGAR
+# ------------------------------------------------------------
+# Cópialo a:  ~/.config/vinegar/config.toml
+# Y AJUSTA las dos rutas marcadas con <<< a TU equipo.
+#
+# Por qué cada línea (los detalles están en el README):
+#   renderer       = "Vulkan"  → habla directo con el driver v3dv de la GPU.
+#                                NO usar DXVK: exige multiDrawIndirect, que el
+#                                VideoCore VII no soporta. (README §8)
+#   virtual_desktop = "1024x768" → OBLIGATORIO. Qt de Studio no detecta pantalla
+#                                y aborta con "no screens available" / c0000409.
+#                                (README §7)
+#   launcher       → inyecta los límites de memoria de WebView2. Vinegar
+#                                SOBRESCRIBE WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+#                                en su código, así que por [studio] env no
+#                                funcionaría. (README §11.4)
+# ============================================================
+
+debug = true
+
+[studio]
+# <<< AJUSTA: dónde dejaste el Wine de Kron4ek 10.0 (README §6)
+wineroot = "/home/pi/Downloads/StudioEmulator/wine-test/wine-10.0-staging-amd64"
+
+renderer = "Vulkan"
+virtual_desktop = "1024x768"
+
+gamemode = false
+discord_rpc = false
+
+# <<< AJUSTA: ruta a webview-env.sh dentro de tu clon del repo
+launcher = "/home/pi/Downloads/StudioEmulator/webview-env.sh"

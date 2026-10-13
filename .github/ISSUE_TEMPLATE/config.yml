@@ -1,0 +1,10 @@
+# ⚠️ SUSTITUYE "miguelgerardodlrm" por tu usuario antes de subir este fichero.
+#    (git grep miguelgerardodlrm -- .github  →  te lista dónde aparece)
+blank_issues_enabled: true
+contact_links:
+  - name: "¿Sigues el README o te atascaste en un paso?"
+    url: "https://github.com/miguelgerardodlrm/studio-emulator/blob/main/README.md"
+    about: "Antes de abrir un issue, mira el §13 (Troubleshooting) — el 90 % de los casos ya está cubierto ahí."
+  - name: "Créditos y licencias del stack"
+    url: "https://github.com/miguelgerardodlrm/studio-emulator/blob/main/CREDITS.md"
+    about: "Box64 (MIT), Wine (LGPL-2.1+), Vinegar (GPL-3.0), Mesa v3dv (MIT)… ver CREDITS.md."

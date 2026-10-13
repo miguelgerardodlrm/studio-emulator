@@ -1,0 +1,33 @@
+# ============================================================
+# .gitignore — lo que NO debe subirse al repositorio
+# ============================================================
+# Motivo: el repo debe ser ~cada cosa que escribe el README, no 4 GB
+# de binarios que se descargan o se compilan siguiendo el propio README.
+
+# --- Builds / fuentes clonadas (se recrean con install.sh) ---
+/wine-test/
+/dxvk-test/
+/box64-src/
+/vinegar-src/
+/build/
+
+# --- Logs de depuración (varios MB de Vinegar y Wine) ---
+*.log
+wineboot_uw.log
+
+# --- Temporales / respaldos ---
+*.tmp
+*.bak
+*.orig
+*~
+.cache/
+
+# --- Python (xinput.py) ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Wine / Studio (no deberían aparecer aquí, por si acaso) ---
+*.rbxlx.bak
+*.rbxl.bak
+pfx/
